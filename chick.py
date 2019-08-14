@@ -721,6 +721,34 @@ class BaseConfig(object, metaclass=MetaConfig):
    """
 
 
+class AttrView(dict):
+    """
+    A Read Only object that recursively builds itself from a dict
+    and allows easy access to attributes
+    """
+
+    def __init__(self, d=None):
+        d = d or {}
+        super(AttrView, self).__init__(d)
+        for k, v in d.items():
+            if isinstance(v, dict):
+                self.__dict__[k] = AttrView(v)
+            else:
+                self.__dict__[k] = v
+
+    def __getattr__(self, attr):
+        try:
+            return self.__dict__[attr]
+        except KeyError:
+            raise AttributeError(attr)
+
+    def __setitem__(self, key, value):
+        raise AttributeError("%s is read only" % key)
+
+    def __setattr__(self, attr, value):
+        raise AttributeError("%s is read only" % attr)
+
+
 class AttrDict(dict):
     """
     An object that recursively builds itself from a dict
@@ -750,6 +778,20 @@ class AttrDict(dict):
         self.__setitem__(attr, value)
 
 
+class DictResolver:
+    """
+    A dumb route resolver
+    """
+    def __init__(self):
+        self.routes = {}
+
+    def add(self, path, wrapped, method):
+        self.routes[path] = (wrapped, method)
+
+    def get(self, path):
+        return self.routes[path]
+
+
 class Chick:
 
     """
@@ -760,14 +802,19 @@ class Chick:
     Routing is done via a dictionary lookup which means your application has
     constant lookup time regardless of the amount of routes.
     Just barebone routing ...
-    """
 
-    routes = {}
+    Args:
+        reolver (object) - A resolver instance. You can use any see for example
+        webob.routing or https://github.com/andreypopp/routr
+    """
+    def __init__(self, resolver=None):
+        if not resolver:
+            self.resolver = DictResolver()
 
     def __call__(self, environ, start_response):
         try:
-            callback, method = self.routes.get(environ.get('PATH_INFO'))
-        except TypeError:
+            callback, method = self.resolver.get(environ.get('PATH_INFO'))
+        except (TypeError, KeyError):
             start_response('404 Not Found', [('Content-Type', 'text/plain')])
             return [b'404 Not Found']
 
@@ -780,7 +827,7 @@ class Chick:
         return callback(environ)
 
     def add_route(self, path, wrapped, method):
-        self.routes[path] = (wrapped, method)
+        self.resolver.add(path, wrapped, method)
 
     def get(self, path):
         def decorator(wrapped):
