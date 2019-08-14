@@ -721,6 +721,35 @@ class BaseConfig(object, metaclass=MetaConfig):
    """
 
 
+class AttrDict(dict):
+    """
+    An object that recursively builds itself from a dict
+    and allows easy access to attributes
+    """
+
+    def __init__(self, d=None):
+        d = d or {}
+        super(AttrDict, self).__init__(d)
+        for k, v in d.items():
+            if isinstance(v, dict):
+                self.__dict__[k] = AttrDict(v)
+            else:
+                self.__dict__[k] = v
+
+    def __getattr__(self, attr):
+        try:
+            return self.__dict__[attr]
+        except KeyError:
+            raise AttributeError(attr)
+
+    def __setitem__(self, key, value):
+        super(AttrDict, self).__setitem__(key, value)
+        self.__dict__[key] = value
+
+    def __setattr__(self, attr, value):
+        self.__setitem__(attr, value)
+
+
 class Chick:
 
     """
